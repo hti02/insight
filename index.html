@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<title>Insight — Calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- STATUS BAR SPACER (iOS safe area) -->
+<div class="status-spacer"></div>
+
+<!-- NAV BAR -->
+<header class="navbar" id="navbar">
+  <div class="navbar-row">
+    <div class="navbar-titles">
+      <div class="navbar-eyebrow">Insight Club · AUB</div>
+      <h1 class="navbar-title">Calendar</h1>
+    </div>
+    <button id="edit-toggle-btn" class="icon-btn" aria-label="Edit">
+      <svg viewBox="0 0 24 24" class="icon-lock"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3H9z"/></svg>
+    </button>
+  </div>
+
+  <!-- SEARCH BAR -->
+  <div class="search-wrap">
+    <div class="search-field">
+      <svg viewBox="0 0 24 24" class="icon-search"><path d="M10 2a8 8 0 1 0 4.9 14.32l4.39 4.39 1.41-1.41-4.39-4.39A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg>
+      <input type="text" id="search-input" placeholder="Search events" autocomplete="off"/>
+      <button id="search-clear" class="search-clear" aria-label="Clear">
+        <svg viewBox="0 0 24 24"><path d="M12 10.59 16.59 6 18 7.41 13.41 12 18 16.59 16.59 18 12 13.41 7.41 18 6 16.59 10.59 12 6 7.41 7.41 6z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- FILTER CHIPS -->
+  <div class="filter-scroll">
+    <div class="filter-row" id="filter-row">
+      <button class="filter-chip active" data-cat="all">All</button>
+      <button class="filter-chip" data-cat="S">🕌 Spiritual</button>
+      <button class="filter-chip" data-cat="ATH">🏃 Athletic</button>
+      <button class="filter-chip" data-cat="INT">💡 Intellectual</button>
+      <button class="filter-chip" data-cat="HUGE">⭐ Huge</button>
+      <button class="filter-chip" data-cat="SC">🤝 Social</button>
+      <button class="filter-chip" data-cat="OFF">🚫 No Classes</button>
+      <button class="filter-chip" data-cat="WED">📅 Wed Series</button>
+    </div>
+  </div>
+
+  <!-- SECONDARY FILTERS: person + size -->
+  <div class="secondary-filters">
+    <select id="filter-owner" class="mini-select">
+      <option value="all">Everyone</option>
+    </select>
+    <select id="filter-size" class="mini-select">
+      <option value="all">Any size</option>
+      <option value="S">Small</option>
+      <option value="M">Medium</option>
+      <option value="L">Large</option>
+    </select>
+  </div>
+
+  <!-- MONTH SCRUBBER -->
+  <div class="month-scrubber-wrap">
+    <div class="month-scrubber" id="month-scrubber"></div>
+  </div>
+</header>
+
+<!-- MAIN LIST -->
+<main class="main" id="calendar"></main>
+
+<div id="empty-state" class="empty-state" style="display:none;">
+  <div class="empty-icon">🔍</div>
+  <div class="empty-title">No events found</div>
+  <div class="empty-sub">Try a different search or filter.</div>
+</div>
+
+<footer class="site-footer">
+  Insight Club AUB · 2026–2027 · Islamic dates are tentative
+</footer>
+
+<!-- FAB (edit mode: add event on selected day handled inline; this opens manage calendars) -->
+<button id="fab-manage-btn" class="fab" style="display:none;" aria-label="Manage calendars">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2.4" stroke-linecap="round"/></svg>
+</button>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- PASSCODE SHEET -->
+<div id="passcode-modal" class="sheet-backdrop">
+  <div class="sheet-box">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-icon-circle">🔒</div>
+    <div class="sheet-title">Enter Edit Mode</div>
+    <div class="sheet-sub">Enter the shared club passcode to add, edit, or remove events and calendars.</div>
+    <input type="password" id="passcode-input" class="sheet-input" placeholder="Passcode" inputmode="text"/>
+    <div id="passcode-error" class="sheet-error">Incorrect passcode. Try again.</div>
+    <div class="sheet-btn-col">
+      <button class="sheet-btn sheet-btn-primary" id="passcode-submit">Unlock</button>
+      <button class="sheet-btn sheet-btn-text" id="passcode-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EVENT SHEET -->
+<div id="event-modal" class="sheet-backdrop">
+  <div class="sheet-box">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title" id="event-modal-title">Add Event</div>
+    <div class="sheet-sub" id="event-date-label"></div>
+
+    <label class="field-label">Title</label>
+    <input type="text" id="event-en1" class="sheet-input" placeholder="e.g. Halaqa Night"/>
+
+    <label class="field-label">Subtitle</label>
+    <input type="text" id="event-en2" class="sheet-input" placeholder="e.g. Weekly circle"/>
+
+    <label class="field-label">Arabic</label>
+    <input type="text" id="event-ar" class="sheet-input" placeholder="حلقة أسبوعية" dir="rtl"/>
+
+    <label class="field-label">Calendar</label>
+    <select id="event-cat" class="sheet-input sheet-select"></select>
+
+    <label class="field-label">Responsible People</label>
+    <div id="event-owners-tags" class="owner-tag-picker"></div>
+
+    <label class="field-label">Event Size</label>
+    <select id="event-size" class="sheet-input sheet-select">
+      <option value="S">Small</option>
+      <option value="M" selected>Medium</option>
+      <option value="L">Large</option>
+    </select>
+
+    <label class="field-label">Notes / Description</label>
+    <textarea id="event-notes" class="sheet-input sheet-textarea" placeholder="Any extra details, links, or planning notes…" rows="3"></textarea>
+
+    <div class="sheet-btn-col">
+      <button class="sheet-btn sheet-btn-primary" id="event-save-btn">Save</button>
+      <button class="sheet-btn sheet-btn-danger" id="event-delete-btn" style="display:none;">Delete Event</button>
+      <button class="sheet-btn sheet-btn-text" id="event-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EVENT DETAILS SHEET (read-only, opens on click outside edit mode) -->
+<div id="details-modal" class="sheet-backdrop">
+  <div class="sheet-box">
+    <div class="sheet-grabber"></div>
+    <div class="details-header">
+      <span id="details-icon" class="details-icon"></span>
+      <div>
+        <div class="sheet-title" id="details-title" style="text-align:left;margin-bottom:0;"></div>
+        <div class="details-cat" id="details-cat"></div>
+      </div>
+    </div>
+
+    <div class="details-row">
+      <span class="details-label">Date</span>
+      <span class="details-value" id="details-date"></span>
+    </div>
+    <div class="details-row">
+      <span class="details-label">Responsible</span>
+      <span class="details-value" id="details-owner"></span>
+    </div>
+    <div class="details-row">
+      <span class="details-label">Size</span>
+      <span class="details-value" id="details-size"></span>
+    </div>
+    <div class="details-row" id="details-sub-row">
+      <span class="details-label">Subtitle</span>
+      <span class="details-value" id="details-sub"></span>
+    </div>
+    <div class="details-row" id="details-ar-row">
+      <span class="details-label">Arabic</span>
+      <span class="details-value" id="details-ar" dir="rtl"></span>
+    </div>
+    <div class="details-notes" id="details-notes-wrap">
+      <span class="details-label">Notes</span>
+      <p class="details-notes-text" id="details-notes"></p>
+    </div>
+
+    <div class="sheet-btn-col">
+      <button class="sheet-btn sheet-btn-text" id="details-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE SHEET (Calendars + People, full edit) -->
+<div id="manage-modal" class="sheet-backdrop">
+  <div class="sheet-box">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title">Manage</div>
+    <div class="sheet-sub">Edit calendars and people. Changes apply everywhere immediately.</div>
+
+    <div class="manage-tabs">
+      <button class="manage-tab active" data-tab="calendars">Calendars</button>
+      <button class="manage-tab" data-tab="people">People</button>
+    </div>
+
+    <!-- CALENDARS TAB -->
+    <div id="manage-tab-calendars" class="manage-tab-panel">
+      <div id="calendar-list" class="calendar-list"></div>
+      <div class="add-calendar-row">
+        <input type="text" id="new-cal-icon" class="sheet-input mini" placeholder="🎯" maxlength="2"/>
+        <input type="text" id="new-cal-label" class="sheet-input grow" placeholder="New calendar name"/>
+        <input type="color" id="new-cal-color" class="color-input" value="#5856D6"/>
+      </div>
+      <button class="sheet-btn sheet-btn-primary" id="add-cal-btn">Add Calendar</button>
+    </div>
+
+    <!-- PEOPLE TAB -->
+    <div id="manage-tab-people" class="manage-tab-panel" style="display:none;">
+      <div id="people-list" class="calendar-list"></div>
+      <div class="add-calendar-row">
+        <input type="text" id="new-person-name" class="sheet-input grow" placeholder="Person's name"/>
+      </div>
+      <button class="sheet-btn sheet-btn-primary" id="add-person-btn">Add Person</button>
+    </div>
+
+    <div class="sheet-btn-col">
+      <button class="sheet-btn sheet-btn-text" id="manage-close-btn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT CALENDAR SHEET -->
+<div id="edit-cal-modal" class="sheet-backdrop">
+  <div class="sheet-box">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title">Edit Calendar</div>
+    <input type="hidden" id="edit-cal-key"/>
+    <label class="field-label">Icon</label>
+    <input type="text" id="edit-cal-icon" class="sheet-input" maxlength="2"/>
+    <label class="field-label">Name</label>
+    <input type="text" id="edit-cal-label" class="sheet-input"/>
+    <label class="field-label">Color</label>
+    <input type="color" id="edit-cal-color" class="color-input" style="width:100%;height:44px;"/>
+    <div class="sheet-btn-col">
+      <button class="sheet-btn sheet-btn-primary" id="edit-cal-save-btn">Save</button>
+      <button class="sheet-btn sheet-btn-text" id="edit-cal-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="seed_data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
